@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLSD Learning Walk Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+  <style>
+    :root{
+      --bg:#f4f7fb;
+      --card:#ffffff;
+      --ink:#1f2937;
+      --muted:#667085;
+      --line:#d8e0ea;
+      --brand:#1f4aa8;
+      --brand-2:#3d6fe0;
+      --chip:#eef4ff;
+      --shadow:0 10px 28px rgba(15,23,42,.08);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      color:var(--ink);
+      background:var(--bg);
+    }
+    .page{
+      max-width:1500px;
+      margin:0 auto;
+      padding:20px;
+    }
+    .hero{
+      background:linear-gradient(135deg,var(--brand),var(--brand-2));
+      color:#fff;
+      border-radius:24px;
+      padding:24px 26px;
+      box-shadow:var(--shadow);
+      margin-bottom:18px;
+    }
+    .hero h1{margin:0 0 8px;font-size:30px}
+    .hero p{margin:0;line-height:1.5;max-width:980px}
+    .layout{
+      display:grid;
+      grid-template-columns:320px minmax(0,1fr);
+      gap:18px;
+      align-items:start;
+    }
+    .panel,.card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+    .panel{
+      position:sticky;
+      top:16px;
+      padding:18px;
+    }
+    .panel h2,.card h2{margin:0 0 12px;font-size:20px}
+    .filter-group{
+      border-bottom:1px solid var(--line);
+      margin-bottom:16px;
+      padding-bottom:16px;
+    }
+    .filter-group:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+    .filter-title{font-weight:700;margin-bottom:10px}
+    .chip-wrap{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{
+      border:1px solid #c9d7ee;
+      background:var(--chip);
+      color:#24407d;
+      border-radius:999px;
+      padding:8px 12px;
+      font-size:14px;
+      cursor:pointer;
+      transition:.15s ease;
+      user-select:none;
+    }
+    .chip:hover{transform:translateY(-1px)}
+    .chip.active{
+      background:var(--brand);
+      border-color:var(--brand);
+      color:#fff;
+    }
+    .actions{display:flex;gap:10px;margin-top:18px}
+    .actions button{
+      flex:1;
+      border:0;
+      border-radius:12px;
+      padding:11px 14px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-secondary{background:#edf3ff;color:var(--brand)}
+    .content{display:grid;gap:18px}
+    .stats{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+    }
+    .stat{padding:18px}
+    .stat-label{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
+    .stat-value{font-size:28px;font-weight:800}
+    .stat-sub{margin-top:6px;color:var(--muted);font-size:13px}
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:18px;
+    }
+    .card{padding:18px}
+    .card-note{
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+      margin-bottom:10px;
+    }
+    .chart-box{height:360px;position:relative}
+    .wide .chart-box{height:440px}
+    .config{
+      margin-top:12px;
+      font-size:12px;
+      color:#e8efff;
+      opacity:.95;
+    }
+    .loading,.error{
+      padding:18px;
+      border-radius:14px;
+      background:#fff;
+      border:1px solid var(--line);
+      box-shadow:var(--shadow);
+      margin-bottom:18px;
+    }
+    .hidden{display:none}
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:14px;
+    }
+    th,td{
+      padding:10px 8px;
+      border-bottom:1px solid var(--line);
+      text-align:left;
+      vertical-align:middle;
+    }
+    th{
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    .footnote{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:8px;
+    }
+    @media (max-width:1100px){
+      .layout{grid-template-columns:1fr}
+      .panel{position:static}
+      .stats,.grid-2{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>CLSD Learning Walk Dashboard</h1>
+      <p>
+        Explore literacy learning walk data by time frame, school, grade, and content area.
+        Teacher-level visuals use anonymous labels so individual identifiers stay hidden.
+      </p>
+      <div class="config">
+        Data source is controlled in the CONFIG block inside this file.
+      </div>
+    </section>
+
+    <div id="loading" class="loading">Loading data from Google Sheets...</div>
+    <div id="error" class="error hidden"></div>
+
+    <div id="app" class="layout hidden">
+      <aside class="panel">
+        <h2>Filters</h2>
+        <div id="filters"></div>
+        <div class="actions">
+          <button id="selectAllBtn" class="btn-secondary" type="button">Select All</button>
+          <button id="resetBtn" class="btn-primary" type="button">Reset</button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="stats">
+          <div class="card stat">
+            <div class="stat-label">Learning Walks</div>
+            <div class="stat-value" id="walkCount">0</div>
+            <div class="stat-sub">Filtered observations</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">Teachers</div>
+            <div class="stat-value" id="teacherCount">0</div>
+            <div class="stat-sub">Anonymous teacher records</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">Overall Average</div>
+            <div class="stat-value" id="overallAvg">—</div>
+            <div class="stat-sub">Mean of cleaned overall averages</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">Strongest Core Area</div>
+            <div class="stat-value" id="topCore">—</div>
+            <div class="stat-sub">Highest current filtered average</div>
+          </div>
+        </section>
+
+        <section class="grid-2">
+          <div class="card">
+            <h2>Average by Core Area</h2>
+            <div class="card-note">Based on the cleaned average columns in the sheet.</div>
+            <div class="chart-box"><canvas id="coreChart"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h2>Anonymous Teacher Snapshot</h2>
+            <div class="card-note">Each point represents one teacher’s average across the current filters. Hover to see the anonymous label.</div>
+            <div class="chart-box"><canvas id="teacherChart"></canvas></div>
+          </div>
+        </section>
+
+        <section class="grid-2">
+          <div class="card">
+            <h2>Time Frame Comparison</h2>
+            <div class="card-note">Beginning, Middle, and End of Year averages for the currently selected school, grade, and content filters.</div>
+            <div class="chart-box"><canvas id="timeframeChart"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h2>Top Strengths and Growth Opportunities</h2>
+            <div class="card-note">These indicator averages are calculated from the cleaned score columns.</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Indicator</th>
+                  <th>Average</th>
+                  <th>Category</th>
+                </tr>
+              </thead>
+              <tbody id="indicatorTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card wide">
+          <h2>Anonymous Teacher Detail by Time Frame</h2>
+          <div class="card-note">Grouped bars compare each anonymous teacher’s average across the selected time frames.</div>
+          <div class="chart-box"><canvas id="teacherTimeChart"></canvas></div>
+          <div class="footnote">Tip: this chart is most useful after narrowing to one school, grade, or content area.</div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const CONFIG = {
+      // Replace with your Google Sheet ID if it changes.
+      SHEET_ID: '1aSxEmb8f781eLzNJDr-o4W915YQso-grYYtu9CWqkRc',
+      // Replace gid if your data lives on a different tab.
+      GID: '0'
+    };
+
+    const CSV_URL = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/export?format=csv&gid=${CONFIG.GID}`;
+
+    const FILTERS = [
+      { key: 'timeframe', label: 'Time Frame' },
+      { key: 'school', label: 'School' },
+      { key: 'grade', label: 'Grade' },
+      { key: 'content', label: 'Content Area' }
+    ];
+
+    const CORE_COLUMNS = [
+      { key: 'avg1', label: 'Core 1' },
+      { key: 'avg2', label: 'Core 2' },
+      { key: 'avg3', label: 'Core 3' },
+      { key: 'avg4', label: 'Core 4' },
+      { key: 'avg5', label: 'Core 5' },
+      { key: 'avg6', label: 'Core 6' }
+    ];
+
+    const STATE = {
+      rows: [],
+      options: { timeframe: [], school: [], grade: [], content: [] },
+      filters: {
+        timeframe: new Set(),
+        school: new Set(),
+        grade: new Set(),
+        content: new Set()
+      },
+      charts: {},
+      teacherAliasMap: {}
+    };
+
+    function normalize(value) {
+      return String(value ?? '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function num(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const cleaned = String(value).replace(/[^0-9.\-]/g, '');
+      if (cleaned === '') return null;
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function avg(values) {
+      const vals = values.filter(v => Number.isFinite(v));
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    }
+
+    function uniqueSorted(values, mode) {
+      const uniq = [...new Set(values.filter(Boolean))];
+      if (mode === 'timeframe') {
+        const order = ['Beginning of Year', 'Middle of Year', 'End of Year'];
+        return uniq.sort((a, b) => {
+          const ia = order.indexOf(a);
+          const ib = order.indexOf(b);
+          if (ia === -1 && ib === -1) return a.localeCompare(b);
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        });
+      }
+      if (mode === 'grade') {
+        const gradeOrder = ['Kindergarten','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8'];
+        return uniq.sort((a,b) => {
+          const ia = gradeOrder.indexOf(a);
+          const ib = gradeOrder.indexOf(b);
+          if (ia === -1 && ib === -1) return a.localeCompare(b, undefined, {numeric:true});
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        });
+      }
+      return uniq.sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+    }
+
+    function buildTeacherAliases(rows) {
+      const ids = uniqueSorted(rows.map(r => r.teacherId));
+      const map = {};
+      ids.forEach((id, index) => {
+        map[id] = `Teacher ${index + 1}`;
+      });
+      return map;
+    }
+
+    function parseRows(rawRows) {
+      return rawRows.map((row) => {
+        const teacherId = normalize(row['Teacher Identifier']) || 'Unknown';
+        return {
+          school: normalize(row['School']) || 'Unknown',
+          content: normalize(row['Department']) || 'Unknown',
+          timeframe: normalize(row['PeriodLW']) || 'Unknown',
+          grade: normalize(row['Grade Level1']) || 'Unknown',
+          teacherId,
+          overall: num(row['Average']),
+          avg1: num(row['1 Average']),
+          avg2: num(row['2 Average']),
+          avg3: num(row['3 Average']),
+          avg4: num(row['4 Average']),
+          avg5: num(row['5 Average']),
+          avg6: num(row['6 Average']),
+          indicators: {
+            '1A': num(row['1A Score']),
+            '1B': num(row['1B Score']),
+            '1C': num(row['1C Score']),
+            '2A': num(row['2A Score']),
+            '2B': num(row['2B Score']),
+            '2C': num(row['2C Score']),
+            '2D': num(row['2D Score']),
+            '2E': num(row['2E Score']),
+            '3A': num(row['3A Score']),
+            '3B': num(row['3B Score']),
+            '4A': num(row['4A Score']),
+            '4B': num(row['4B Score']),
+            '4C': num(row['4C Score']),
+            '5A': num(row['5A Score']),
+            '5B': num(row['5B Score']),
+            '5C': num(row['5C Score']),
+            '6A': num(row['6A Score']),
+            '6B': num(row['6B Score'])
+          }
+        };
+      }).filter(r => r.school !== 'Unknown' || r.teacherId !== 'Unknown');
+    }
+
+    function deriveOptions(rows) {
+      return {
+        timeframe: uniqueSorted(rows.map(r => r.timeframe), 'timeframe'),
+        school: uniqueSorted(rows.map(r => r.school)),
+        grade: uniqueSorted(rows.map(r => r.grade), 'grade'),
+        content: uniqueSorted(rows.map(r => r.content))
+      };
+    }
+
+    function filteredRows() {
+      return STATE.rows.filter(row =>
+        FILTERS.every(f => STATE.filters[f.key].size === 0 || STATE.filters[f.key].has(row[f.key]))
+      );
+    }
+
+    function renderFilters() {
+      const container = document.getElementById('filters');
+      container.innerHTML = '';
+
+      FILTERS.forEach(f => {
+        const group = document.createElement('div');
+        group.className = 'filter-group';
+
+        const title = document.createElement('div');
+        title.className = 'filter-title';
+        title.textContent = f.label;
+        group.appendChild(title);
+
+        const wrap = document.createElement('div');
+        wrap.className = 'chip-wrap';
+
+        STATE.options[f.key].forEach(option => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `chip${STATE.filters[f.key].has(option) ? ' active' : ''}`;
+          btn.textContent = option;
+          btn.addEventListener('click', () => {
+            const set = STATE.filters[f.key];
+            if (set.has(option)) set.delete(option);
+            else set.add(option);
+            renderFilters();
+            updateDashboard();
+          });
+          wrap.appendChild(btn);
+        });
+
+        group.appendChild(wrap);
+        container.appendChild(group);
+      });
+    }
+
+    function updateSummary(rows) {
+      const teacherIds = [...new Set(rows.map(r => r.teacherId))];
+      const coreAverages = CORE_COLUMNS.map(core => ({
+        label: core.label,
+        value: avg(rows.map(r => r[core.key]))
+      })).filter(x => Number.isFinite(x.value)).sort((a,b) => b.value - a.value);
+
+      document.getElementById('walkCount').textContent = rows.length;
+      document.getElementById('teacherCount').textContent = teacherIds.length;
+      document.getElementById('overallAvg').textContent = Number.isFinite(avg(rows.map(r => r.overall))) ? avg(rows.map(r => r.overall)).toFixed(2) : '—';
+      document.getElementById('topCore').textContent = coreAverages.length ? `${coreAverages[0].label} (${coreAverages[0].value.toFixed(2)})` : '—';
+    }
+
+    function upsertChart(key, canvasId, config) {
+      if (STATE.charts[key]) {
+        STATE.charts[key].destroy();
+      }
+      STATE.charts[key] = new Chart(document.getElementById(canvasId), config);
+    }
+
+    function renderCoreChart(rows) {
+      upsertChart('core', 'coreChart', {
+        type: 'bar',
+        data: {
+          labels: CORE_COLUMNS.map(c => c.label),
+          datasets: [{
+            label: 'Average Score',
+            data: CORE_COLUMNS.map(c => avg(rows.map(r => r[c.key])))
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { min: 0, max: 3, ticks: { stepSize: 0.5 } } }
+        }
+      });
+    }
+
+    function renderTeacherChart(rows) {
+      const teacherIds = uniqueSorted(rows.map(r => r.teacherId));
+      const labels = teacherIds.map(id => STATE.teacherAliasMap[id] || 'Teacher');
+      const points = teacherIds.map((id, index) => ({
+        x: index + 1,
+        y: avg(rows.filter(r => r.teacherId === id).map(r => r.overall))
+      })).filter(p => Number.isFinite(p.y));
+
+      upsertChart('teacher', 'teacherChart', {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label: 'Teacher Average',
+            data: points,
+            pointRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${labels[ctx.dataIndex]}: ${ctx.raw.y.toFixed(2)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              min: 0,
+              max: Math.max(labels.length + 1, 2),
+              ticks: {
+                callback: (value) => labels[value - 1] || '',
+                maxRotation: 60,
+                minRotation: 45
+              }
+            },
+            y: { min: 0, max: 3, ticks: { stepSize: 0.5 } }
+          }
+        }
+      });
+    }
+
+    function renderTimeframeChart(rows) {
+      const labels = STATE.options.timeframe;
+      upsertChart('timeframe', 'timeframeChart', {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Overall Average',
+            data: labels.map(label => avg(rows.filter(r => r.timeframe === label).map(r => r.overall))),
+            tension: 0.25
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { min: 0, max: 3, ticks: { stepSize: 0.5 } } }
+        }
+      });
+    }
+
+    function renderIndicatorTable(rows) {
+      const combined = {};
+      rows.forEach(row => {
+        Object.entries(row.indicators).forEach(([key, value]) => {
+          if (!Number.isFinite(value)) return;
+          combined[key] ??= [];
+          combined[key].push(value);
+        });
+      });
+
+      const summary = Object.entries(combined)
+        .map(([indicator, values]) => ({ indicator, value: avg(values) }))
+        .filter(x => Number.isFinite(x.value))
+        .sort((a, b) => a.value - b.value);
+
+      const picked = [
+        ...summary.slice(0, 4).map(item => ({ ...item, category: 'Growth Opportunity' })),
+        ...summary.slice(-4).reverse().map(item => ({ ...item, category: 'Strength' }))
+      ];
+
+      const tbody = document.getElementById('indicatorTable');
+      tbody.innerHTML = '';
+      if (!picked.length) {
+        tbody.innerHTML = '<tr><td colspan="3">No score data is available for the current filters.</td></tr>';
+        return;
+      }
+
+      picked.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${item.indicator}</td><td>${item.value.toFixed(2)}</td><td>${item.category}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTeacherTimeChart(rows) {
+      const labels = uniqueSorted(rows.map(r => r.teacherId)).map(id => STATE.teacherAliasMap[id]);
+      const teacherIds = uniqueSorted(rows.map(r => r.teacherId));
+      const selectedTimeframes = STATE.filters.timeframe.size ? uniqueSorted([...STATE.filters.timeframe], 'timeframe') : STATE.options.timeframe;
+
+      upsertChart('teacherTime', 'teacherTimeChart', {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: selectedTimeframes.map(tf => ({
+            label: tf,
+            data: teacherIds.map(id => avg(rows.filter(r => r.teacherId === id && r.timeframe === tf).map(r => r.overall)))
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { min: 0, max: 3, ticks: { stepSize: 0.5 } },
+            x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
+          }
+        }
+      });
+    }
+
+    function updateDashboard() {
+      const rows = filteredRows();
+      updateSummary(rows);
+      renderCoreChart(rows);
+      renderTeacherChart(rows);
+      renderTimeframeChart(rows);
+      renderIndicatorTable(rows);
+      renderTeacherTimeChart(rows);
+    }
+
+    function setUpButtons() {
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        FILTERS.forEach(f => STATE.filters[f.key].clear());
+        renderFilters();
+        updateDashboard();
+      });
+
+      document.getElementById('selectAllBtn').addEventListener('click', () => {
+        FILTERS.forEach(f => STATE.filters[f.key] = new Set(STATE.options[f.key]));
+        renderFilters();
+        updateDashboard();
+      });
+    }
+
+    function showError(message) {
+      document.getElementById('loading').classList.add('hidden');
+      const error = document.getElementById('error');
+      error.classList.remove('hidden');
+      error.innerHTML = message;
+    }
+
+    Papa.parse(CSV_URL, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        if (!results.data || !results.data.length) {
+          showError('No rows were returned from the Google Sheet. Make sure the sheet is viewable and the CSV export URL is valid.');
+          return;
+        }
+
+        STATE.rows = parseRows(results.data);
+        STATE.options = deriveOptions(STATE.rows);
+        STATE.teacherAliasMap = buildTeacherAliases(STATE.rows);
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+
+        renderFilters();
+        setUpButtons();
+        updateDashboard();
+      },
+      error: () => {
+        showError('The dashboard could not load the Google Sheet. Confirm that the sheet is shared so viewers can access it and that the tab gid is correct.');
+      }
+    });
+  </script>
+</body>
+</html>
