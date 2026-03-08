@@ -262,6 +262,28 @@
           <div class="chart-box"><canvas id="teacherTimeChart"></canvas></div>
           <div class="footnote">Tip: this chart is most useful after narrowing to one school, grade, or content area.</div>
         </section>
+
+        <section class="card wide">
+          <details class="toggle-card">
+            <summary>School Comparison <span class="small">Hidden by default</span></summary>
+            <div class="toggle-note">This view is collapsed by default so it can be shared selectively. It compares filtered averages across schools.</div>
+            <div class="toggle-body">
+              <div class="chart-box"><canvas id="schoolChart"></canvas></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="card wide">
+          <h2>Grade-Level Heatmap</h2>
+          <div class="card-note">This heatmap shows average scores by grade and time frame for the current school and content filters. Darker cells indicate stronger averages.</div>
+          <div class="heatmap-wrap">
+            <table class="heatmap-table">
+              <thead id="heatmapHead"></thead>
+              <tbody id="heatmapBody"></tbody>
+            </table>
+          </div>
+        </section>
+
       </main>
     </div>
   </div>
@@ -503,7 +525,9 @@
           datasets: [{
             label: 'Teacher Average',
             data: points,
-            pointRadius: 6
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            pointHitRadius: 15
           }]
         },
         options: {
@@ -542,7 +566,11 @@
           datasets: [{
             label: 'Overall Average',
             data: labels.map(label => avg(rows.filter(r => r.timeframe === label).map(r => r.overall))),
-            tension: 0.25
+            tension: 0.25,
+            borderWidth: 3,
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            pointHitRadius: 15
           }]
         },
         options: {
@@ -613,6 +641,64 @@
       });
     }
 
+
+    function colorForScore(value) {
+      if (!Number.isFinite(value)) return '#f8fafc';
+      const pct = Math.max(0, Math.min(1, value / 3));
+      const lightness = 96 - (pct * 42);
+      return `hsl(219, 75%, ${lightness}%)`;
+    }
+
+    function renderSchoolChart(rows) {
+      const labels = STATE.options.school;
+      upsertChart('school', 'schoolChart', {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'School Average',
+            data: labels.map(label => avg(rows.filter(r => r.school === label).map(r => r.overall)))
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { min: 0, max: 3, ticks: { stepSize: 0.5 } }
+          }
+        }
+      });
+    }
+
+    function renderGradeHeatmap(rows) {
+      const grades = STATE.filters.grade.size ? uniqueSorted([...STATE.filters.grade], 'grade') : STATE.options.grade;
+      const timeframes = STATE.options.timeframe;
+      const head = document.getElementById('heatmapHead');
+      const body = document.getElementById('heatmapBody');
+
+      head.innerHTML = `<tr><th class="label-col">Grade</th>${timeframes.map(tf => `<th>${tf}</th>`).join('')}</tr>`;
+      body.innerHTML = '';
+
+      if (!grades.length || !timeframes.length) {
+        body.innerHTML = '<tr><td colspan="4">No heatmap data is available for the current filters.</td></tr>';
+        return;
+      }
+
+      grades.forEach(grade => {
+        const tr = document.createElement('tr');
+        let cells = `<td class="label-col">${grade}</td>`;
+        timeframes.forEach(tf => {
+          const value = avg(rows.filter(r => r.grade === grade && r.timeframe === tf).map(r => r.overall));
+          const display = Number.isFinite(value) ? value.toFixed(2) : '—';
+          cells += `<td style="background:${colorForScore(value)};font-weight:700;">${display}</td>`;
+        });
+        tr.innerHTML = cells;
+        body.appendChild(tr);
+      });
+    }
+
+
     function updateDashboard() {
       const rows = filteredRows();
       updateSummary(rows);
@@ -621,6 +707,8 @@
       renderTimeframeChart(rows);
       renderIndicatorTable(rows);
       renderTeacherTimeChart(rows);
+      renderSchoolChart(rows);
+      renderGradeHeatmap(rows);
     }
 
     function setUpButtons() {
